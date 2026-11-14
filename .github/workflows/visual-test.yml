@@ -1,0 +1,59 @@
+name: Prueba visual Three.js WebGL
+on:
+  push:
+    branches: [solucion-taller-gltf]
+    paths-ignore: ["entrega/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          npm ci --prefix imported-models
+          npm install --no-save --prefix imported-models playwright-core
+      - name: Find headless Chrome
+        shell: bash
+        run: |
+          which google-chrome || which google-chrome-stable || which chromium
+          echo "CHROME_BIN=$(which google-chrome || which google-chrome-stable || which chromium)" >> "$GITHUB_ENV"
+      - name: Build and run local site
+        run: |
+          npm run build --prefix imported-models
+          npm run preview --prefix imported-models -- --host 127.0.0.1 --port 4173 >/tmp/vite-preview.log 2>&1 &
+          sleep 3
+          curl -fsSI http://127.0.0.1:4173/
+      - name: Browser test models and interactivity
+        run: node imported-models/scripts/e2e.mjs
+      - name: Install image preview utility
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil >/dev/null
+      - name: Export image previews
+        shell: bash
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import base64,io
+          from PIL import Image
+          for path in ['/tmp/museo-gltf-desktop.png','/tmp/museo-gltf-mobile.png']:
+              im=Image.open(path).convert('RGB')
+              im.thumbnail((950,750))
+              out=io.BytesIO()
+              im.save(out,format='JPEG',quality=58,optimize=True)
+              print('BROWSER_PREVIEW_'+path.split('/')[-1]+'='+base64.b64encode(out.getvalue()).decode())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MuseoGLTF-Evidencias-WebGL
+          path: |
+            /tmp/museo-gltf-desktop.png
+            /tmp/museo-gltf-mobile.png
+          retention-days: 30

@@ -1,0 +1,23 @@
+name: Inspect GLTF assignment PDFs
+on:
+  push:
+    branches: [solucion-taller-gltf]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract both PDF documents
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils >/dev/null
+          for file in *.pdf; do
+            echo "========== PDF START: $file =========="
+            pdfinfo "$file" | grep -E "Title:|Pages:|Page size:|File size:"
+            pdftotext -layout "$file" - | cat
+            echo "========== PDF END: $file =========="
+          done

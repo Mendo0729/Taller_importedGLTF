@@ -1,0 +1,77 @@
+name: Validar y empaquetar Museo GLTF
+on:
+  push:
+    branches: [solucion-taller-gltf, main]
+    paths-ignore:
+      - "entrega/**"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: imported-models/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci --prefix imported-models
+      - name: Validar archivos glTF y dependencias
+        run: npm test --prefix imported-models
+      - name: Compilar aplicación web
+        run: npm run build --prefix imported-models
+      - name: Comprobar archivos de la compilación
+        run: |
+          test -s imported-models/dist/index.html
+          test -s imported-models/dist/assets/index.js || find imported-models/dist/assets -maxdepth 1 -type f -print
+          test -s imported-models/dist/models/FlightHelmet/glTF/FlightHelmet.gltf
+          test -s imported-models/dist/models/Duck/glTF-Draco/Duck.gltf
+          test -s imported-models/dist/draco/gltf/draco_decoder.wasm
+          test -s imported-models/dist/models/Fox/glTF-Binary/Fox.glb
+          du -sh imported-models/dist
+      - name: Crear ZIP de entrega sin node_modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/museo-entrega
+          mkdir -p /tmp/museo-entrega/imported-models/static/models
+          mkdir -p /tmp/museo-entrega/imported-models/static/draco
+          cp -a imported-models/src /tmp/museo-entrega/imported-models/src
+          cp -a imported-models/scripts /tmp/museo-entrega/imported-models/scripts
+          cp -a imported-models/package.json /tmp/museo-entrega/imported-models/
+          cp -a imported-models/package-lock.json /tmp/museo-entrega/imported-models/
+          cp -a imported-models/vite.config.js /tmp/museo-entrega/imported-models/
+          cp -a imported-models/readme.md /tmp/museo-entrega/imported-models/README.md
+          cp -a imported-models/CREDITOS.md /tmp/museo-entrega/imported-models/
+          cp -a imported-models/ENTREGA.md /tmp/museo-entrega/imported-models/
+          cp -a imported-models/static/draco/gltf /tmp/museo-entrega/imported-models/static/draco/
+          cp -a imported-models/static/models/Duck /tmp/museo-entrega/imported-models/static/models/
+          cp -a imported-models/static/models/FlightHelmet /tmp/museo-entrega/imported-models/static/models/
+          cp -a imported-models/static/models/Fox /tmp/museo-entrega/imported-models/static/models/
+          mkdir -p entrega
+          rm -f entrega/Asignacion2_MuseoGLTF.zip
+          (cd /tmp/museo-entrega && zip -r -q -9 "$GITHUB_WORKSPACE/entrega/Asignacion2_MuseoGLTF.zip" imported-models)
+          unzip -t entrega/Asignacion2_MuseoGLTF.zip | tail -3
+          unzip -Z1 entrega/Asignacion2_MuseoGLTF.zip | grep -E 'imported-models/src/(index.html|main.js|style.css)$'
+          ! unzip -Z1 entrega/Asignacion2_MuseoGLTF.zip | grep -E '/node_modules/|/dist/'
+          ls -lh entrega/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Asignacion2_MuseoGLTF
+          path: entrega/Asignacion2_MuseoGLTF.zip
+          retention-days: 30
+      - name: Publicar ZIP en rama del taller
+        if: github.ref_name == 'solucion-taller-gltf'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f entrega/Asignacion2_MuseoGLTF.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "build: incluir ZIP verificable de la asignación GLTF"
+            git push origin HEAD:solucion-taller-gltf
+          fi
